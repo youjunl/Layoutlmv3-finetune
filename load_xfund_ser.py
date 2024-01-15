@@ -156,7 +156,7 @@ class XFUND(datasets.GeneratorBasedBuilder):
         self.label2ids = XFUND_label2ids
         logger.info("Generating examples from = %s", filepaths)
         # open json
-        with open(filepaths[0], "r") as f:
+        with open(filepaths[0], "r", encoding="utf-8") as f:
             data = json.load(f)
         # re-org data format
         total_data = {"id": [], "words": [], "bboxes": [], "ner_tags": [], "image_path": []}        
