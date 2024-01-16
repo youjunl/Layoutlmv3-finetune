@@ -65,11 +65,11 @@ def load_image(image_path):
     image = Image.open(image_path).convert("RGB")
     w, h = image.size
     # resize image to 224x224
-    image = image.resize((224, 224))
-    image = np.asarray(image)
-    image = image[:, :, ::-1] # flip color channels from RGB to BGR
-    image = image.transpose(2, 0, 1) # move channels to first dimension
-    image = torch.as_tensor(image, dtype=torch.uint8) # Convert to tensor
+    #image = image.resize((224, 224))
+    #image = np.asarray(image)
+    #image = image[:, :, ::-1] # flip color channels from RGB to BGR
+    #image = image.transpose(2, 0, 1) # move channels to first dimension
+    #image = torch.as_tensor(image, dtype=torch.uint8) # Convert to tensor
     return image, (w, h)
 
 class XFUNDConfig(datasets.BuilderConfig):
@@ -119,7 +119,7 @@ class XFUND(datasets.GeneratorBasedBuilder):
                             names=["O", "B-QUESTION", "B-ANSWER", "B-HEADER", "I-ANSWER", "I-QUESTION", "I-HEADER"]
                         )
                     ),
-                    "image": datasets.Array3D(shape=(3, 224, 224), dtype="uint8"),
+                    "image": datasets.features.Image(),
                 }
             ),
             supervised_keys=None,
