@@ -66,10 +66,10 @@ def load_image(image_path):
     w, h = image.size
     # resize image to 224x224
     image = image.resize((224, 224))
-    # image = np.asarray(image)
-    # image = image[:, :, ::-1] # flip color channels from RGB to BGR
-    # image = image.transpose(2, 0, 1) # move channels to first dimension
-    # image = torch.as_tensor(image, dtype=torch.uint8) # Convert to tensor
+    image = np.asarray(image)
+    image = image[:, :, ::-1] # flip color channels from RGB to BGR
+    image = image.transpose(2, 0, 1) # move channels to first dimension
+    image = torch.as_tensor(image, dtype=torch.uint8) # Convert to tensor
     return image, (w, h)
 
 class XFUNDConfig(datasets.BuilderConfig):
