@@ -80,7 +80,7 @@ class XFUND(datasets.GeneratorBasedBuilder):
 
     BUILDER_CONFIGS = [XFUNDConfig(name=f"xfund.{lang}", lang=lang) for lang in _LANG]
 
-    tokenizer = AutoTokenizer.from_pretrained("./model/")
+    #tokenizer = AutoTokenizer.from_pretrained("./model/")
 
     def box_norm(self, box, width, height):
         def clip(min_num, num, max_num):
@@ -124,8 +124,8 @@ class XFUND(datasets.GeneratorBasedBuilder):
             description=_DESCRIPTION,
             features=datasets.Features(
                 {
+                    "id": datasets.Value("string"),
                     "words": datasets.Sequence(datasets.Value("string")),
-                    #"input_ids": datasets.Sequence(datasets.Value("int64")),
                     "bboxes": datasets.Sequence(datasets.Sequence(datasets.Value("int64"))),
                     "ner_tags": datasets.Sequence(
                         datasets.ClassLabel(
@@ -153,31 +153,44 @@ class XFUND(datasets.GeneratorBasedBuilder):
         ]
 
     def _generate_examples(self, filepaths):
-        self.label2ids = XFUND_label2ids
+        #self.label2ids = XFUND_label2ids
         logger.info("Generating examples from = %s", filepaths)
         # open json
         with open(filepaths[0], "r", encoding="utf-8") as f:
             data = json.load(f)
         # re-org data format
-        total_data = {"id": [], "words": [], "bboxes": [], "ner_tags": [], "image_path": []}        
         for doc in data["documents"]:
+            total_data = {"words": [], "bboxes": [], "ner_tags": []}        
             width, height = doc['img']['width'], doc['img']['height']
             doc["img"]["fpath"] = os.path.join(filepaths[1], doc["img"]["fname"])
             image, _ = load_image(doc["img"]["fpath"])
             cur_doc_words, cur_doc_bboxes, cur_doc_ner_tags, cur_doc_image_path = [], [], [], []
             for j in range(len(doc['document'])):
+                # 每一行是一个分词
                 cur_item = doc['document'][j]
-                cur_doc_words.append(cur_item['text'])
-                cur_doc_bboxes.append(self.box_norm(cur_item['box'], width=width, height=height))
-                cur_doc_ner_tags.append(cur_item['label'])
-                total_data['id'] += [len(total_data['id'])]
-                total_data['words'] += [cur_doc_words]
-                total_data['bboxes'] += [cur_doc_bboxes]
-                total_data['ner_tags'] += [cur_doc_ner_tags]
-                total_data['image_path'] += [doc['img']['fname']]
+                cur_label = cur_item['label'].upper()
+                cur_word = cur_item['text'] # Text是完整的句子，字符在words中
+                for k in range(len(cur_item['words'])):
+                    cur_ch = cur_item["words"][k]
+                    cur_doc_words.append(cur_ch['text']) # Text是完整的句子，字符在words中
+                    cur_doc_bboxes.append(self.box_norm(cur_ch['box'], width=width, height=height))
+
+                #拆分label
+                if cur_label == 'OTHER':
+                    cur_labels = ["O"] * len(cur_word)
+                else:
+                    cur_labels = [cur_label] * len(cur_word)
+                    cur_labels[0] = 'B-' + cur_labels[0] # 第一个作为begin
+                    for k in range(1, len(cur_labels)):
+                        cur_labels[k] = 'I-' + cur_labels[k]
+                cur_doc_ner_tags.extend(cur_labels)
+
+            total_data['words'] += cur_doc_words
+            total_data['bboxes'] += cur_doc_bboxes
+            total_data['ner_tags'] += cur_doc_ner_tags
 
             chunk_size = 512
-            for chunk_id, index in enumerate(range(0, len(total_data["id"]), chunk_size)):
+            for chunk_id, index in enumerate(range(0, len(cur_doc_words), chunk_size)):
                 item = {}
                 for k in total_data:
                     item[k] = total_data[k][index:index + chunk_size]
@@ -185,6 +198,7 @@ class XFUND(datasets.GeneratorBasedBuilder):
                 item.update({
                     "id": f"{doc['id']}_{chunk_id}",
                     "image": image,
+                    #'image_path': doc['img']['fname'],
                 })
                 yield f"{doc['id']}_{chunk_id}", item
 
