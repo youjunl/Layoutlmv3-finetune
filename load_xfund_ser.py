@@ -27,6 +27,16 @@ XFUND_label2ids = {
     'I-ANSWER':6,
 }
 
+XFUND_ids2label = {
+    0:"O",
+    1:'B-HEADER',
+    2:'I-HEADER',
+    3:'B-QUESTION',
+    4:'I-QUESTION',
+    5:'B-ANSWER',
+    6:'I-ANSWER',
+}
+
 
 def normalize_bbox(bbox, size):
     return [
@@ -81,7 +91,7 @@ class XFUND(datasets.GeneratorBasedBuilder):
 
     BUILDER_CONFIGS = [XFUNDConfig(name=f"xfund.{lang}", lang=lang) for lang in _LANG]
 
-    #tokenizer = AutoTokenizer.from_pretrained("./model/")
+    tokenizer = AutoTokenizer.from_pretrained("./model/")
 
     def box_norm(self, box, width, height):
         def clip(min_num, num, max_num):
@@ -95,30 +105,6 @@ class XFUND(datasets.GeneratorBasedBuilder):
         assert x1 >= x0
         assert y1 >= y0
         return [x0, y0, x1, y1]
-
-    def get_segment_ids(self, bboxs):
-        segment_ids = []
-        for i in range(len(bboxs)):
-            if i == 0:
-                segment_ids.append(0)
-            else:
-                if bboxs[i - 1] == bboxs[i]:
-                    segment_ids.append(segment_ids[-1])
-                else:
-                    segment_ids.append(segment_ids[-1] + 1)
-        return segment_ids
-
-    def get_position_ids(self, segment_ids):
-        position_ids = []
-        for i in range(len(segment_ids)):
-            if i == 0:
-                position_ids.append(2)
-            else:
-                if segment_ids[i] == segment_ids[i - 1]:
-                    position_ids.append(position_ids[-1] + 1)
-                else:
-                    position_ids.append(2)
-        return position_ids
     
     def _info(self):
         return datasets.DatasetInfo(
@@ -160,48 +146,90 @@ class XFUND(datasets.GeneratorBasedBuilder):
         with open(filepaths[0], "r", encoding="utf-8") as f:
             data = json.load(f)
         # re-org data format
+        total_data = {"id": [], "lines": [], "bboxes": [], "ner_tags": [], "image_path": []}
         for doc in data["documents"]:
-            total_data = {"words": [], "bboxes": [], "ner_tags": []}        
+            #image, _ = load_image(doc["img"]["fpath"])
             width, height = doc['img']['width'], doc['img']['height']
             doc["img"]["fpath"] = os.path.join(filepaths[1], doc["img"]["fname"])
-            image, _ = load_image(doc["img"]["fpath"])
-            cur_doc_words, cur_doc_bboxes, cur_doc_ner_tags, cur_doc_image_path = [], [], [], []
+            
+            cur_doc_lines, cur_doc_bboxes, cur_doc_ner_tags, cur_doc_image_path = [], [], [], []
             for j in range(len(doc['document'])):
                 # 每一行是一个分词
                 cur_item = doc['document'][j]
-                cur_label = cur_item['label'].upper()
-                cur_word = cur_item['text'] # Text是完整的句子，字符在words中
-                for k in range(len(cur_item['words'])):
-                    cur_ch = cur_item["words"][k]
-                    cur_doc_words.append(cur_ch['text']) # Text是完整的句子，字符在words中
-                    cur_doc_bboxes.append(cur_ch['box']) # 这里不需要norm
+                #cur_words = cur_item['text'] # Text是完整的句子，字符在words中
+                cur_doc_lines.append(cur_item['text'])
+                cur_doc_bboxes.append(self.box_norm(cur_item['box'], width=width, height=height))
+                cur_doc_ner_tags.append(cur_item['label'])
+            
+            total_data['id'] += [len(total_data['id'])]
+            total_data['lines'] += [cur_doc_lines]
+            total_data['bboxes'] += [cur_doc_bboxes]
+            total_data['ner_tags'] += [cur_doc_ner_tags]
+            total_data['image_path'] += [doc["img"]["fpath"]]
 
-                #拆分label
+        # Tokenize text and get bbox/label
+        total_input_ids, total_bboxs, total_label_ids = [], [], []
+        for i in range(len(total_data['lines'])):
+            cur_doc_input_ids, cur_doc_bboxs, cur_doc_labels = [], [], []
+            for j in range(len(total_data['lines'][i])):
+                cur_input_ids = self.tokenizer(total_data['lines'][i][j], truncation=False, add_special_tokens=False, return_attention_mask=False)['input_ids']
+                if len(cur_input_ids) == 0: continue
+
+                cur_label = total_data['ner_tags'][i][j].upper()
                 if cur_label == 'OTHER':
-                    cur_labels = ["O"] * len(cur_word)
+                    cur_labels = ["O"] * len(cur_input_ids)
+                    for k in range(len(cur_labels)):
+                        cur_labels[k] = XFUND_label2ids[cur_labels[k]]
                 else:
-                    cur_labels = [cur_label] * len(cur_word)
-                    cur_labels[0] = 'B-' + cur_labels[0] # 第一个作为begin
+                    cur_labels = [cur_label] * len(cur_input_ids)
+                    cur_labels[0] = XFUND_label2ids['B-' + cur_labels[0]]
                     for k in range(1, len(cur_labels)):
-                        cur_labels[k] = 'I-' + cur_labels[k]
-                cur_doc_ner_tags.extend(cur_labels)
+                        cur_labels[k] = XFUND_label2ids['I-' + cur_labels[k]]
+                assert len(cur_input_ids) == len([total_data['bboxes'][i][j]] * len(cur_input_ids)) == len(cur_labels)
+                cur_doc_input_ids += cur_input_ids
+                cur_doc_bboxs += [total_data['bboxes'][i][j]] * len(cur_input_ids)
+                cur_doc_labels += cur_labels
+            assert len(cur_doc_input_ids) == len(cur_doc_bboxs) == len(cur_doc_labels)
+            assert len(cur_doc_input_ids) > 0
 
-            total_data['words'] += cur_doc_words
-            total_data['bboxes'] += cur_doc_bboxes
-            total_data['ner_tags'] += cur_doc_ner_tags
+            total_input_ids.append(cur_doc_input_ids)
+            total_bboxs.append(cur_doc_bboxs)
+            total_label_ids.append(cur_doc_labels)
+        assert len(total_input_ids) == len(total_bboxs) == len(total_label_ids)
 
-            chunk_size = 512
-            for chunk_id, index in enumerate(range(0, len(cur_doc_words), chunk_size)):
-                item = {}
-                for k in total_data:
-                    item[k] = total_data[k][index:index + chunk_size]
+        # 数据分片
+        input_ids, bboxs, labels = [], [], []
+        image_path = []
+        for i in range(len(total_input_ids)):
+            start = 0
+            cur_iter = 0
+            while start < len(total_input_ids[i]):
+                end = min(start + 510, len(total_input_ids[i]))
 
-                item.update({
-                    "id": f"{doc['id']}_{chunk_id}",
-                    "image": image,
-                    #'image_path': doc['img']['fname'],
-                })
-                yield f"{doc['id']}_{chunk_id}", item
+                input_ids.append(total_input_ids[i][start: end])
+                bboxs.append(total_bboxs[i][start: end])
+                labels.append(total_label_ids[i][start: end])
+
+                image_path.append(total_data['image_path'][i])
+
+                start = end
+                cur_iter += 1
+
+        assert len(input_ids) == len(bboxs) == len(labels)
+
+        # 返回数据
+        for i in range(len(input_ids)):
+            words = [self.tokenizer.decode(input_id) for input_id in input_ids[i]]
+            ner_tags = [XFUND_ids2label[id] for id in labels[i]]
+            image, _ = load_image(image_path[i])
+            res = {
+                "id": f"{i}",
+                "words": words,
+                "bboxes": bboxs[i],
+                "ner_tags": ner_tags,
+                "image": image,
+            }
+            yield i, res
 
 def pil_loader(path: str) -> Image.Image:
     # open path as file to avoid ResourceWarning (https://github.com/python-pillow/Pillow/issues/835)
