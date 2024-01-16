@@ -6,7 +6,7 @@ import numpy as np
 from PIL import Image
 import datasets
 from transformers import AutoTokenizer
-# import torch
+import torch
 # from torchvision import transforms
 # from xfund.image_utils import Compose, RandomResizedCropAndInterpolationWithTwoPic
 
@@ -55,10 +55,11 @@ def load_image(image_path):
     image = Image.open(image_path).convert("RGB")
     w, h = image.size
     # resize image to 224x224
-    image = image.resize((224, 224))
-    image = np.asarray(image)  
-    image = image[:, :, ::-1] # flip color channels from RGB to BGR
-    image = image.transpose(2, 0, 1) # move channels to first dimension
+    # image = image.resize((224, 224))
+    # image = np.asarray(image)
+    # image = image[:, :, ::-1] # flip color channels from RGB to BGR
+    # image = image.transpose(2, 0, 1) # move channels to first dimension
+    # image = torch.as_tensor(image, dtype=torch.uint8) # Convert to tensor
     return image, (w, h)
 
 class XFUNDConfig(datasets.BuilderConfig):
@@ -173,7 +174,7 @@ class XFUND(datasets.GeneratorBasedBuilder):
                 for k in range(len(cur_item['words'])):
                     cur_ch = cur_item["words"][k]
                     cur_doc_words.append(cur_ch['text']) # Text是完整的句子，字符在words中
-                    cur_doc_bboxes.append(self.box_norm(cur_ch['box'], width=width, height=height))
+                    cur_doc_bboxes.append(cur_ch['box']) # 这里不需要norm
 
                 #拆分label
                 if cur_label == 'OTHER':
