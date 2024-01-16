@@ -65,7 +65,7 @@ def load_image(image_path):
     image = Image.open(image_path).convert("RGB")
     w, h = image.size
     # resize image to 224x224
-    # image = image.resize((224, 224))
+    image = image.resize((224, 224))
     # image = np.asarray(image)
     # image = image[:, :, ::-1] # flip color channels from RGB to BGR
     # image = image.transpose(2, 0, 1) # move channels to first dimension
@@ -112,9 +112,9 @@ class XFUND(datasets.GeneratorBasedBuilder):
             features=datasets.Features(
                 {
                     "id": datasets.Value("string"),
-                    "words": datasets.Sequence(datasets.Value("string")),
+                    "input_ids": datasets.Sequence(datasets.Value("int64")),
                     "bboxes": datasets.Sequence(datasets.Sequence(datasets.Value("int64"))),
-                    "ner_tags": datasets.Sequence(
+                    "labels": datasets.Sequence(
                         datasets.ClassLabel(
                             names=["O", "B-QUESTION", "B-ANSWER", "B-HEADER", "I-ANSWER", "I-QUESTION", "I-HEADER"]
                         )
@@ -219,14 +219,12 @@ class XFUND(datasets.GeneratorBasedBuilder):
 
         # 返回数据
         for i in range(len(input_ids)):
-            words = [self.tokenizer.decode(input_id) for input_id in input_ids[i]]
-            ner_tags = [XFUND_ids2label[id] for id in labels[i]]
             image, _ = load_image(image_path[i])
             res = {
                 "id": f"{i}",
-                "words": words,
+                "input_ids": input_ids[i],
                 "bboxes": bboxs[i],
-                "ner_tags": ner_tags,
+                "labels": labels[i],
                 "image": image,
             }
             yield i, res
