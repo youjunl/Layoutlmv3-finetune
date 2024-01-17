@@ -65,10 +65,10 @@ def load_image(image_path):
     image = Image.open(image_path).convert("RGB")
     w, h = image.size
     # resize image to 224x224
-    image = image.resize((224, 224))
-    image = np.asarray(image)
-    image = image[:, :, ::-1] # flip color channels from RGB to BGR
-    image = image.transpose(2, 0, 1) # move channels to first dimension
+    #image = image.resize((224, 224))
+    #image = np.asarray(image)
+    #image = image[:, :, ::-1] # flip color channels from RGB to BGR
+    #image = image.transpose(2, 0, 1) # move channels to first dimension
     #image = torch.as_tensor(image, dtype=torch.uint8) # Convert to tensor
     return image, (w, h)
 
@@ -204,7 +204,7 @@ class XFUND(datasets.GeneratorBasedBuilder):
             start = 0
             cur_iter = 0
             while start < len(total_input_ids[i]):
-                end = min(start + 510, len(total_input_ids[i]))
+                end = min(start + 512, len(total_input_ids[i]))
 
                 input_ids.append(total_input_ids[i][start: end])
                 bboxs.append(total_bboxs[i][start: end])
