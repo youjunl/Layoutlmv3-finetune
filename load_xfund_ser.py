@@ -173,8 +173,8 @@ class XFUND(datasets.GeneratorBasedBuilder):
             cur_doc_input_ids, cur_doc_bboxs, cur_doc_labels = [], [], []
             for j in range(len(total_data['lines'][i])):
                 cur_input_ids = self.tokenizer(total_data['lines'][i][j], truncation=False, add_special_tokens=False, return_attention_mask=False)['input_ids']
-                if len(cur_input_ids) == 0: continue
-
+                if len(cur_input_ids) == 0:
+                    continue
                 cur_label = total_data['ner_tags'][i][j].upper()
                 if cur_label == 'OTHER':
                     cur_labels = ["O"] * len(cur_input_ids)
@@ -196,6 +196,27 @@ class XFUND(datasets.GeneratorBasedBuilder):
             total_bboxs.append(cur_doc_bboxs)
             total_label_ids.append(cur_doc_labels)
         assert len(total_input_ids) == len(total_bboxs) == len(total_label_ids)
+
+        # 排序
+        # TBYX
+        def order_by_tbyx(bboxes, indexes):
+            comb = [(bbox, index) for bbox, index in zip(bboxes, indexes)]
+            sorted_comb = sorted(comb, key=lambda r: (r[0][1], [0][0]))
+            for i in range(len(sorted_comb) - 1):
+                for j in range(i, 0, -1):
+                    if abs(sorted_comb[j + 1][0][1] - sorted_comb[j][0][1]) < 20 and \
+                            (sorted_comb[j + 1][0][0] < sorted_comb[j][0][0]):
+                        tmp = sorted_comb[j]
+                        sorted_comb[j] = sorted_comb[j + 1]
+                        sorted_comb[j + 1] = tmp
+                    else:
+                        break
+            sorted_indexes = [index for _, index in sorted_comb]
+            return sorted_indexes
+        tbyx_index = order_by_tbyx(np.asarray(total_bboxs).astype(int), np.arange(len(total_bboxs)))
+        total_input_ids = np.array(total_input_ids)[tbyx_index]
+        total_bboxs = np.array(total_bboxs)[tbyx_index]
+        total_label_ids = np.array(total_label_ids)[tbyx_index]
 
         # 数据分片
         input_ids, bboxs, labels = [], [], []
