@@ -139,6 +139,23 @@ class XFUND(datasets.GeneratorBasedBuilder):
             # datasets.SplitGenerator(name=datasets.Split.TEST, gen_kwargs={"filepaths": test_files_for_many_langs}),
         ]
 
+       # 排序
+        # TBYX
+    def order_by_tbyx(self, bboxes, indexes):
+        comb = [(bbox, index) for bbox, index in zip(bboxes, indexes)]
+        sorted_comb = sorted(comb, key=lambda r: (r[0][1], [0][0]))
+        for i in range(len(sorted_comb) - 1):
+            for j in range(i, 0, -1):
+                if abs(sorted_comb[j + 1][0][1] - sorted_comb[j][0][1]) < 20 and \
+                        (sorted_comb[j + 1][0][0] < sorted_comb[j][0][0]):
+                    tmp = sorted_comb[j]
+                    sorted_comb[j] = sorted_comb[j + 1]
+                    sorted_comb[j + 1] = tmp
+                else:
+                    break
+        sorted_indexes = [index for _, index in sorted_comb]
+        return sorted_indexes
+
     def _generate_examples(self, filepaths):
         #self.label2ids = XFUND_label2ids
         logger.info("Generating examples from = %s", filepaths)
@@ -160,7 +177,13 @@ class XFUND(datasets.GeneratorBasedBuilder):
                 cur_doc_lines.append(cur_item['text'])
                 cur_doc_bboxes.append(self.box_norm(cur_item['box'], width=width, height=height))
                 cur_doc_ner_tags.append(cur_item['label'])
-            
+
+            # 数据排序
+            tbyx_index = self.order_by_tbyx(np.array(cur_doc_bboxes), np.arange(len(cur_doc_bboxes)))
+            cur_doc_lines = np.array(cur_doc_lines)[tbyx_index]
+            cur_doc_bboxes = np.array(cur_doc_bboxes)[tbyx_index]
+            cur_doc_ner_tags = np.array(cur_doc_ner_tags)[tbyx_index]
+
             total_data['id'] += [len(total_data['id'])]
             total_data['lines'] += [cur_doc_lines]
             total_data['bboxes'] += [cur_doc_bboxes]
@@ -196,27 +219,6 @@ class XFUND(datasets.GeneratorBasedBuilder):
             total_bboxs.append(cur_doc_bboxs)
             total_label_ids.append(cur_doc_labels)
         assert len(total_input_ids) == len(total_bboxs) == len(total_label_ids)
-
-        # 排序
-        # TBYX
-        def order_by_tbyx(bboxes, indexes):
-            comb = [(bbox, index) for bbox, index in zip(bboxes, indexes)]
-            sorted_comb = sorted(comb, key=lambda r: (r[0][1], [0][0]))
-            for i in range(len(sorted_comb) - 1):
-                for j in range(i, 0, -1):
-                    if abs(sorted_comb[j + 1][0][1] - sorted_comb[j][0][1]) < 20 and \
-                            (sorted_comb[j + 1][0][0] < sorted_comb[j][0][0]):
-                        tmp = sorted_comb[j]
-                        sorted_comb[j] = sorted_comb[j + 1]
-                        sorted_comb[j + 1] = tmp
-                    else:
-                        break
-            sorted_indexes = [index for _, index in sorted_comb]
-            return sorted_indexes
-        tbyx_index = order_by_tbyx(np.asarray(total_bboxs).astype(int), np.arange(len(total_bboxs)))
-        total_input_ids = np.array(total_input_ids)[tbyx_index]
-        total_bboxs = np.array(total_bboxs)[tbyx_index]
-        total_label_ids = np.array(total_label_ids)[tbyx_index]
 
         # 数据分片
         input_ids, bboxs, labels = [], [], []
